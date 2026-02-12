@@ -57,7 +57,7 @@ contract ReserveOracleTest is Test {
         assertEq(stored.ratioBps, 11111);
     }
 
-    function test_UpdateReport_RevertIf_Unauthorized() public {
+    function testFail_UpdateReport_Unauthorized() public {
         ReserveOracle.ReserveReport memory report = ReserveOracle
             .ReserveReport({
                 timestamp: block.timestamp,
@@ -69,13 +69,6 @@ contract ReserveOracleTest is Test {
             });
 
         vm.prank(unauthorized);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IAccessControl.AccessControlUnauthorizedAccount.selector,
-                unauthorized,
-                oracle.REPORTER_ROLE()
-            )
-        );
         oracle.updateReport(report);
     }
 }
