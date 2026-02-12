@@ -57,7 +57,7 @@ contract ReserveOracleTest is Test {
         assertEq(stored.ratioBps, 11111);
     }
 
-    function testFail_UpdateReport_Unauthorized() public {
+    function test_UpdateReport_RevertIf_Unauthorized() public {
         ReserveOracle.ReserveReport memory report = ReserveOracle
             .ReserveReport({
                 timestamp: block.timestamp,
@@ -69,6 +69,7 @@ contract ReserveOracleTest is Test {
             });
 
         vm.prank(unauthorized);
+        vm.expectRevert(); // Expect any revert
         oracle.updateReport(report);
     }
 }
