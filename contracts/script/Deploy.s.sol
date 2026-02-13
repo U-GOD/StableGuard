@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "forge-std/Script.sol";
-import "../src/StableCoin.sol";
-import "../src/ReserveOracle.sol";
-import "../src/SafeguardController.sol";
-import "../src/ZKVerifier.sol";
+import {Script} from "forge-std/Script.sol";
+import {StableCoin} from "../src/StableCoin.sol";
+import {ReserveOracle} from "../src/ReserveOracle.sol";
+import {SafeguardController} from "../src/SafeguardController.sol";
+import {ZKVerifier} from "../src/ZKVerifier.sol";
 
 contract DeployScript is Script {
     function run() external {

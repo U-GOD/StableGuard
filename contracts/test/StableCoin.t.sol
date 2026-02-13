@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "forge-std/Test.sol";
-import "../src/StableCoin.sol";
+import {Test} from "forge-std/Test.sol";
+import {StableCoin} from "../src/StableCoin.sol";
 
 contract StableCoinTest is Test {
     StableCoin public stableCoin;
@@ -103,7 +103,8 @@ contract StableCoinTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(Pausable.EnforcedPause.selector)
         );
-        stableCoin.transfer(user1, 10 * 10 ** 18);
+        bool success = stableCoin.transfer(user1, 10 * 10 ** 18);
+        assertTrue(success, "Transfer should succeed");
     }
 
     function test_Mint_RevertIf_Paused() public {

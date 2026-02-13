@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "forge-std/Test.sol";
-import "../src/ZKVerifier.sol";
+import {Test} from "forge-std/Test.sol";
+import {ZKVerifier} from "../src/ZKVerifier.sol";
 
 contract ZKVerifierTest is Test {
     ZKVerifier public verifier;

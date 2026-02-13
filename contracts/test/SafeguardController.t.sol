@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import "forge-std/Test.sol";
-import "../src/SafeguardController.sol";
-import "../src/StableCoin.sol";
-import "../src/ReserveOracle.sol";
+import {Test} from "forge-std/Test.sol";
+import {SafeguardController} from "../src/SafeguardController.sol";
+import {StableCoin} from "../src/StableCoin.sol";
+import {ReserveOracle} from "../src/ReserveOracle.sol";
 
 contract SafeguardControllerTest is Test {
     SafeguardController public controller;
