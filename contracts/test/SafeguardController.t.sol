@@ -2,6 +2,7 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {SafeguardController} from "../src/SafeguardController.sol";
 import {StableCoin} from "../src/StableCoin.sol";
 import {ReserveOracle} from "../src/ReserveOracle.sol";

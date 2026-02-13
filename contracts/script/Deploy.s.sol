@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Script} from "forge-std/Script.sol";
+import {Script, console} from "forge-std/Script.sol";
 import {StableCoin} from "../src/StableCoin.sol";
 import {ReserveOracle} from "../src/ReserveOracle.sol";
 import {SafeguardController} from "../src/SafeguardController.sol";

@@ -2,6 +2,8 @@
 pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {StableCoin} from "../src/StableCoin.sol";
 
 contract StableCoinTest is Test {
@@ -103,8 +105,7 @@ contract StableCoinTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(Pausable.EnforcedPause.selector)
         );
-        bool success = stableCoin.transfer(user1, 10 * 10 ** 18);
-        assertTrue(success, "Transfer should succeed");
+        stableCoin.transfer(user1, 10 * 10 ** 18);
     }
 
     function test_Mint_RevertIf_Paused() public {
