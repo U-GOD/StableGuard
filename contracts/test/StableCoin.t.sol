@@ -109,8 +109,6 @@ contract StableCoinTest is Test {
     function test_Mint_RevertIf_Paused() public {
         stableCoin.pause();
 
-        // Minting also triggers _update, so it should fail when paused unless bypassed.
-        // ERC20Pausable checks pause on update.
         vm.expectRevert(
             abi.encodeWithSelector(Pausable.EnforcedPause.selector)
         );

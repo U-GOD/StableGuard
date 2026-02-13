@@ -14,7 +14,7 @@ contract ReserveOracle is AccessControl {
         uint256 timestamp;
         uint256 totalReserves;
         uint256 totalSupply;
-        uint16 ratioBps; // e.g., 10000 = 100%
+        uint16 ratioBps;
         bool compliant;
         bytes32 proofHash;
     }
