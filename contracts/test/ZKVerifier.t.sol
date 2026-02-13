@@ -22,7 +22,7 @@ contract ZKVerifierTest is Test {
         uint256[2] memory c = [uint256(0), uint256(0)];
         uint256[] memory input = new uint256[](0);
 
-        vm.expectEmit(false, false, false, true); // Don't check indexed hash for this test, just "valid"
+        vm.expectEmit(false, false, false, true);
         emit ProofVerified(bytes32(0), true);
 
         bool isValid = verifier.verifyProof(a, b, c, input);

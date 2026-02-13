@@ -39,7 +39,6 @@ contract DeployScript is Script {
         console.log("StableCoin ownership transferred to SafeguardController");
 
         // 6. Grant REPORTER_ROLE to deployer (for testing/demo purposes)
-        // In prod, this would be the CRE workflow address
         oracle.grantRole(oracle.REPORTER_ROLE(), deployer);
         console.log("REPORTER_ROLE granted to deployer");
 
