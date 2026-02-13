@@ -7,7 +7,9 @@ remappings = [
     "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"
 ]
 
-[rpc_endpoints]
+# Allow compilation from project root by adding root-relative remappings
+# (VS Code Solidity extension often triggers builds from root)
+[profile.default.rpc_endpoints]
 sepolia = "${SEPOLIA_RPC_URL}"
 
 [etherscan]
