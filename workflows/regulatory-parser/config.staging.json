@@ -1,0 +1,6 @@
+{
+  "schedule": "0 0 * * *",
+  "regulatoryTextUrl": "https://api.stableguard.mock/regulatory-updates",
+  "geminiApiUrl": "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=YOUR_API_KEY",
+  "webhookUrl": "https://api.stableguard.mock/alerts"
+}
