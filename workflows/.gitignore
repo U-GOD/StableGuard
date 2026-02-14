@@ -1,1 +1,15 @@
+# Dependencies
+node_modules/
+dist/
+
+# Env
+.env
 *.env
+
+# Build Artifacts
+tmp.wasm
+*.wasm
+
+# CRE
+.cre/
+cre_temp/
