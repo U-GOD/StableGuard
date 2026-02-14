@@ -1,0 +1,6 @@
+{
+  "schedule": "*/15 * * * *",
+  "stableCoinAddress": "0x0000000000000000000000000000000000000000",
+  "oracleAddress": "0x0000000000000000000000000000000000000000",
+  "reserveApiUrl": "https://api.stableguard.mock/reserves"
+}
