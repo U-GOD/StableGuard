@@ -1,78 +1,55 @@
-import Image from "next/image";
-import { Geist, Geist_Mono } from "next/font/google";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { ReserveHealthPanel } from "@/components/ReserveHealthPanel";
+import { RegulatoryComplianceCard } from "@/components/RegulatoryComplianceCard";
+import { AssetAllocationChart } from "@/components/AssetAllocationChart";
+import { HoldingsTable } from "@/components/HoldingsTable";
+import { AttestationFeed } from "@/components/AttestationFeed";
 
 export default function Home() {
   return (
-    <div
-      className={`${geistSans.className} ${geistMono.className} flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black`}
-    >
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the index.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <DashboardLayout>
+      {/* Header Section */}
+      <div className="mb-10 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <h2 className="mb-2 text-3xl font-light text-slate-900 dark:text-white">
+            Reserve Overview
+          </h2>
+          <p className="max-w-xl text-sm text-text-muted">
+            Real-time monitoring of collateral assets backing the issued
+            stablecoin supply. Data verified by Chainlink oracles across 3 networks.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs/pages/getting-started?utm_source=create-next-app&utm_medium=default-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 transition-colors hover:border-slate-400 hover:text-slate-900 dark:border-slate-700 dark:text-text-muted dark:hover:border-slate-500 dark:hover:text-white">
+            <span className="material-icons-outlined text-sm">download</span>
+            Export Report
+          </button>
+          <button className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg shadow-primary/20 transition-colors hover:bg-yellow-600">
+            Verify On-Chain
+          </button>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Top Grid: Hero Metric & Charts */}
+      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Hero Card (5 cols) */}
+        <ReserveHealthPanel />
+
+        {/* Asset Allocation Donut (4 cols) */}
+        <AssetAllocationChart />
+
+        {/* Regulatory Checklist (3 cols) */}
+        <RegulatoryComplianceCard />
+      </div>
+
+      {/* Bottom Grid: Detailed Table & Feed */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Asset Holdings Table (8 cols) */}
+        <HoldingsTable />
+
+        {/* Events Feed (4 cols) */}
+        <AttestationFeed />
+      </div>
+    </DashboardLayout>
   );
 }
