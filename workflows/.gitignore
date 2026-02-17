@@ -2,9 +2,11 @@
 node_modules/
 dist/
 
-# Env
+# Env & Secrets
 .env
 *.env
+config.staging.json
+!config.example.json
 
 # Build Artifacts
 tmp.wasm
@@ -13,3 +15,4 @@ tmp.wasm
 # CRE
 .cre/
 cre_temp/
+
