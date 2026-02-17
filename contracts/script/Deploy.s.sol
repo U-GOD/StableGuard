@@ -34,11 +34,15 @@ contract DeployScript is Script {
         );
         console.log("SafeguardController deployed at:", address(controller));
 
-        // 5. Transfer StableCoin ownership to Controller
+        // 5. Mint Initial Supply to Deployer (1,000,000 SGUSD)
+        stableCoin.mint(deployer, 1_000_000 * 10 ** 18);
+        console.log("Minted 1,000,000 SGUSD to deployer");
+
+        // 6. Transfer StableCoin ownership to Controller
         stableCoin.transferOwnership(address(controller));
         console.log("StableCoin ownership transferred to SafeguardController");
 
-        // 6. Grant REPORTER_ROLE to deployer (for testing/demo purposes)
+        // 7. Grant REPORTER_ROLE to deployer (for testing/demo purposes)
         oracle.grantRole(oracle.REPORTER_ROLE(), deployer);
         console.log("REPORTER_ROLE granted to deployer");
 
