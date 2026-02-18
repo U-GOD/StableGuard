@@ -2,9 +2,8 @@
 pragma solidity ^0.8.30;
 
 import {Script, console} from "forge-std/Script.sol";
-import {StableCoin} from "../src/StableCoin.sol";
-import {ReserveOracle} from "../src/ReserveOracle.sol";
-import {SafeguardController} from "../src/SafeguardController.sol";
+import {ComplianceOracle} from "../src/ComplianceOracle.sol";
+import {AlertController} from "../src/AlertController.sol";
 import {ZKVerifier} from "../src/ZKVerifier.sol";
 
 contract DeployScript is Script {
@@ -14,35 +13,22 @@ contract DeployScript is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // 1. Deploy StableCoin (Owner = Deployer initially)
-        StableCoin stableCoin = new StableCoin(deployer);
-        console.log("StableCoin deployed at:", address(stableCoin));
+        // 1. Deploy ComplianceOracle (Admin = Deployer)
+        ComplianceOracle oracle = new ComplianceOracle(deployer);
+        console.log("ComplianceOracle deployed at:", address(oracle));
 
-        // 2. Deploy ReserveOracle (Admin = Deployer)
-        ReserveOracle oracle = new ReserveOracle(deployer);
-        console.log("ReserveOracle deployed at:", address(oracle));
-
-        // 3. Deploy ZKVerifier
+        // 2. Deploy ZKVerifier
         ZKVerifier verifier = new ZKVerifier();
         console.log("ZKVerifier deployed at:", address(verifier));
 
-        // 4. Deploy SafeguardController
-        SafeguardController controller = new SafeguardController(
+        // 3. Deploy AlertController (references oracle only)
+        AlertController controller = new AlertController(
             deployer,
-            address(stableCoin),
             address(oracle)
         );
-        console.log("SafeguardController deployed at:", address(controller));
+        console.log("AlertController deployed at:", address(controller));
 
-        // 5. Mint Initial Supply to Deployer (1,000,000 SGUSD)
-        stableCoin.mint(deployer, 1_000_000 * 10 ** 18);
-        console.log("Minted 1,000,000 SGUSD to deployer");
-
-        // 6. Transfer StableCoin ownership to Controller
-        stableCoin.transferOwnership(address(controller));
-        console.log("StableCoin ownership transferred to SafeguardController");
-
-        // 7. Grant REPORTER_ROLE to deployer (for testing/demo purposes)
+        // 4. Grant REPORTER_ROLE to deployer (for CRE workflow / testing)
         oracle.grantRole(oracle.REPORTER_ROLE(), deployer);
         console.log("REPORTER_ROLE granted to deployer");
 
