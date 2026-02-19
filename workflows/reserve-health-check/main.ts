@@ -12,7 +12,6 @@ import {
   bytesToHex,
 } from "@chainlink/cre-sdk";
 import { encodeAbiParameters } from "viem";
-import { COMPLIANCE_REPORT_PARAMS } from "./contracts/abi/ReserveOracle";
 
 type Config = {
   schedule: string;
@@ -27,7 +26,7 @@ const WARNING_RATIO = 10200n;  // 102% — early warning
 const CRITICAL_RATIO = 10050n; // 100.5% — critical
 const BREACH_RATIO = 10000n;   // 100% — breach / depeg risk
 
-// ─── Main Workflow Handler ───
+// --- Main Workflow Handler ---
 
 const onCronTrigger = (runtime: Runtime<Config>): string => {
   const config = runtime.config;
@@ -38,17 +37,17 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
   );
   const httpClient = new HTTPClient();
 
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   // Step 1: Fetch USDC Reserve Data (DeFiLlama)
-  // ─────────────────────────────────────────────
-  runtime.log("━━━ StableGuard Compliance Check ━━━");
+  // -----------------------------------------------
+  runtime.log("=== StableGuard Compliance Check ===");
 
   const usdcData = fetchStablecoinData(runtime, httpClient, config.defillamaUsdcEndpoint, "USDC");
   const usdtData = fetchStablecoinData(runtime, httpClient, config.defillamaUsdtEndpoint, "USDT");
 
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   // Step 2: Read real USDC totalSupply on Sepolia
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   let usdcOnChainSupply: bigint;
   try {
     const supplyResult = sepoliaEvm.callContract(runtime, {
@@ -65,9 +64,9 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
     runtime.log("[EVM Read] Sepolia USDC read failed (simulation mode).");
   }
 
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   // Step 3: Compute Compliance for Each Stablecoin
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   const reportTimestamp = BigInt(Math.floor(now.getTime() / 1000));
   const proofHash = ("0x" + "0".repeat(64)) as `0x${string}`;
 
@@ -81,18 +80,18 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
     runtime, usdtData, "USDT", reportTimestamp, proofHash
   );
 
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   // Step 4: Write Reports On-Chain
-  // ─────────────────────────────────────────────
+  // -----------------------------------------------
   writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdcReport);
   writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdtReport);
 
   const summary = `USDC: ${usdcReport.status} (${usdcReport.ratioBps}bps) | USDT: ${usdtReport.status} (${usdtReport.ratioBps}bps)`;
-  runtime.log(`━━━ Result: ${summary} ━━━`);
+  runtime.log(`=== Result: ${summary} ===`);
   return summary;
 };
 
-// ─── Helpers ───
+// --- Helpers ---
 
 interface StablecoinData {
   totalReserves: bigint;
@@ -204,28 +203,48 @@ function computeComplianceReport(
 
   runtime.log(`[Compute] ${symbol}: ratio=${ratioBps}bps status=${status} compliant=${compliant}`);
 
-  if (!data.permittedAssetsOnly) runtime.log(`  ⚠ ${symbol}: Non-permitted asset types in reserves`);
-  if (!data.noRehypothecation) runtime.log(`  ⚠ ${symbol}: Possible rehypothecation detected`);
-  if (auditOverdue) runtime.log(`  ⚠ ${symbol}: Audit overdue (>30 days)`);
+  if (!data.permittedAssetsOnly) runtime.log(`  WARNING: ${symbol}: Non-permitted asset types in reserves`);
+  if (!data.noRehypothecation) runtime.log(`  WARNING: ${symbol}: Possible rehypothecation detected`);
+  if (auditOverdue) runtime.log(`  WARNING: ${symbol}: Audit overdue (>30 days)`);
 
   // Encode for on-chain submission
   // Symbol as bytes4: "USDC" → 0x55534443, "USDT" → 0x55534454
-  const symbolBytes = ("0x" + Buffer.from(symbol.padEnd(4, "\0")).toString("hex")) as `0x${string}`;
+  const symbolBytes = stringToBytes4Hex(symbol);
 
-  const encodedReport = encodeAbiParameters(COMPLIANCE_REPORT_PARAMS, [
-    {
-      timestamp,
-      totalReserves: data.totalReserves,
-      totalSupply: data.totalSupply,
-      ratioBps,
-      compliant,
-      proofHash,
-      stablecoinSymbol: symbolBytes,
-      permittedAssetsOnly: data.permittedAssetsOnly,
-      noRehypothecation: data.noRehypothecation,
-      lastAuditTimestamp: data.lastAuditTimestamp,
-    },
-  ]);
+  // Use raw ABI type definition — parseAbiParameters can't handle complex tuples in abitype@1.0.8
+  const encodedReport = encodeAbiParameters(
+    [
+      {
+        type: 'tuple',
+        components: [
+          { type: 'uint256', name: 'timestamp' },
+          { type: 'uint256', name: 'totalReserves' },
+          { type: 'uint256', name: 'totalSupply' },
+          { type: 'uint16', name: 'ratioBps' },
+          { type: 'bool', name: 'compliant' },
+          { type: 'bytes32', name: 'proofHash' },
+          { type: 'bytes4', name: 'stablecoinSymbol' },
+          { type: 'bool', name: 'permittedAssetsOnly' },
+          { type: 'bool', name: 'noRehypothecation' },
+          { type: 'uint256', name: 'lastAuditTimestamp' },
+        ],
+      },
+    ] as const,
+    [
+      {
+        timestamp,
+        totalReserves: data.totalReserves,
+        totalSupply: data.totalSupply,
+        ratioBps,
+        compliant,
+        proofHash,
+        stablecoinSymbol: symbolBytes,
+        permittedAssetsOnly: data.permittedAssetsOnly,
+        noRehypothecation: data.noRehypothecation,
+        lastAuditTimestamp: data.lastAuditTimestamp,
+      },
+    ]
+  );
 
   return { ratioBps, status, compliant, encodedReport };
 }
@@ -270,7 +289,7 @@ function writeReportOnChain(
   }
 }
 
-// ─── Workflow Setup ───
+// --- Workflow Setup ---
 
 const initWorkflow = (config: Config) => {
   const cron = new CronCapability();
@@ -284,11 +303,21 @@ export async function main() {
   await runner.run(initWorkflow);
 }
 
-// ─── Utility Functions ───
+// --- Utility Functions ---
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
   if (bytes.length === 0) return 0n;
   let hex = "0x";
   for (const b of bytes) hex += b.toString(16).padStart(2, "0");
   return BigInt(hex);
+}
+
+/** Convert a string like "USDC" to bytes4 hex: "0x55534443" */
+function stringToBytes4Hex(str: string): `0x${string}` {
+  const padded = str.padEnd(4, "\0");
+  let hex = "0x";
+  for (let i = 0; i < 4; i++) {
+    hex += padded.charCodeAt(i).toString(16).padStart(2, "0");
+  }
+  return hex as `0x${string}`;
 }
