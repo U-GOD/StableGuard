@@ -1,121 +1,105 @@
 # StableGuard
 
-Automated stablecoin reserve-health monitoring and safeguard system built for the Chainlink Convergence Hackathon (Risk & Compliance track). StableGuard uses Chainlink Runtime Environment (CRE) workflows to continuously verify reserve backing, enforce strict compliance standards, and trigger on-chain protective actions when risk thresholds are breached.
+**Automated Stablecoin Compliance Oracle & Monitoring System**
 
-## Problem
+Built for the **Chainlink Convergence Hackathon (Risk & Compliance track)**.
 
-In today’s rapidly growing stablecoin ecosystem, issuers face a critical challenge: providing continuous, tamper-proof, and real-time proof of reserve health. Without verifiable, automated monitoring, even well-managed stablecoins remain vulnerable to sudden loss of confidence, depegging events, and run risks. This lack of transparency slows institutional adoption and limits the safe use of stablecoins for payments, remittances, and treasury management worldwide — especially in emerging markets where stablecoins are increasingly used to hedge local currency volatility.
+StableGuard is a **Chainlink Runtime Environment (CRE)** orchestration layer that continuously monitors **real-world stablecoin reserves** (USDC, USDT) against the **GENIUS Act** compliance standards. It writes cryptographic compliance attestations on-chain and triggers alerts for compliance breaches.
 
-StableGuard solves this by automating the enforcement loop on-chain.
+##  Key Features
 
-## How It Works
+*   **Real-Time Reserve Monitoring**: Fetches live reserve data for **USDC** and **USDT** from DeFiLlama and cross-references it with on-chain `totalSupply` from Sepolia.
+*   **Automated GENIUS Act Compliance**:
+    *   Verifies **1:1 Backing Ratio**.
+    *   Checks for **Permitted Assets** (Treasuries, FDIC deposits).
+    *   Ensures **No Rehypothecation**.
+    *   Tracks **Audit Freshness** (monthly attestation enforcement).
+*   **On-Chain Compliance Oracle**: Writes a signed `ComplianceReport` to the `ComplianceOracle` smart contract on Ethereum Sepolia.
+*   **AI Regulatory Parser**: Uses **Google Gemini AI** (via CRE) to parse raw legislative text from Congress.gov and flag new compliance requirements automatically.
+*   **Automated Alerting**: The `AlertController` smart contract emits events for breaches, which trigger CRE workflows to send notifications (Discord/Slack/Email).
 
-1. **CRE Workflows** run on a cron schedule and on mint/burn events, fetching reserve data from external APIs and on-chain supply data.
-2. A **health ratio** (`totalReserves / totalSupply`) is computed and pushed to an on-chain oracle (`ReserveOracle.sol`).
-3. A **SafeguardController** evaluates the ratio against configurable thresholds and can pause the stablecoin token, request rebalancing, or issue warnings automatically.
-4. An **AI Regulatory Parser** (Google Gemini via CRE HTTP capability) scans for regulatory updates and changes to compliance standards.
-5. A **Zero-Knowledge Proof** circuit (Circom/Groth16) proves reserve solvency without revealing exact reserve amounts.
-6. A **Next.js Dashboard** displays reserve health, compliance status, alerts, and ZK proof verification in real time.
-
-## Architecture
+##  Architecture 
 
 ```
-Triggers (Cron / EVM Log / Webhook)
-        |
-        v
-CRE Workflow (Health Check)
-  |-- HTTP: Fetch reserve data from mock bank API
-  |-- EVM Read: totalSupply from StableCoin.sol
-  |-- Compute: ratio, compliance checks
-  |-- EVM Write: push report to ReserveOracle.sol
-  |-- Conditional: invoke Safeguard workflow if ratio < threshold
-        |
-        v
-SafeguardController.sol
-  |-- Pause StableCoin if ratio < 100%
-  |-- Emit RebalanceRequested if ratio < 100.5%
-  |-- Emit Warning if ratio < 102%
-        |
-        v
-Next.js Dashboard (reads events + oracle data)
+[External Data]                 [Chainlink CRE]                    [On-Chain: Sepolia]
+                                                                        
+DeFiLlama API  ---->  (HTTP)    Workflow 1: Reserve Check   ---->  (EVM Write) ComplianceOracle.sol
+Sepolia USDC   ---->  (EVM Read)   - Fetches Data                      - Stores Reports
+                                   - Computes Compliance               - Emits ReportUpdated
+                                   - Enforces GENIUS Act               
+                                                                        
+Congress.gov   ---->  (HTTP)    Workflow 3: Reg Parser      ---->  (Log Trigger) Workflow 2: Safeguard
+Gemini AI      ---->  (AI)         - Parses Bill Text                  - Listens for ReportUpdated
+                                   - Updates Rules                     - Checks Alerts
+                                                                       - Emits Events / Webhooks
 ```
 
 ## Project Structure
 
-```
-StableGuard/
-  contracts/          Solidity smart contracts (Foundry)
-    src/              Contract source files
-    test/             Foundry test files
-    script/           Deployment scripts
-  cre-workflows/      Chainlink CRE workflows (TypeScript)
-  frontend/           Next.js dashboard
-  circuits/           Zero-knowledge proof circuits (Circom)
-```
+*   `contracts/`: Solidity smart contracts (Foundry).
+    *   `ComplianceOracle.sol`: Stores compliance reports.
+    *   `AlertController.sol`: Emits alerts based on oracle data.
+*   `workflows/`: Chainlink CRE Workflows (TypeScript).
+    *   `reserve-health-check`: Main cron job for monitoring USDC/USDT.
+    *   `safeguard-trigger`: Listens for on-chain events to send alerts.
+    *   `regulatory-parser`: AI-powered legislative analysis.
+*   `frontend/`: *Optional* Next.js dashboard for visualization.
 
-## Smart Contracts
-
-- **StableCoin.sol** -- ERC-20 token with mint, burn, and pause functionality. Emits events consumed by CRE workflows.
-- **ReserveOracle.sol** -- On-chain data store for reserve health reports. Access-controlled to authorized CRE reporters.
-- **SafeguardController.sol** -- Evaluates reserve reports against risk thresholds and executes protective actions.
-- **ZKVerifier.sol** -- Groth16 verifier for zero-knowledge reserve solvency proofs.
-
-## Tech Stack
-
-- **Smart Contracts:** Solidity 0.8.24, Foundry, OpenZeppelin Contracts v5
-- **Automation:** Chainlink CRE (Runtime Environment)
-- **Frontend:** Next.js, ethers.js, Recharts
-- **ZK Proofs:** Circom, snarkjs, Groth16
-- **AI:** Google Gemini API (regulatory text parsing)
-- **Network:** Ethereum Sepolia testnet
-
-## Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- Foundry (`foundryup`)
-- Git
+*   Node.js 18+
+*   Foundry (`foundryup`)
+*   CRE CLI (`npm install -g @chainlink/cre-cli`)
 
-### Setup
+### 1. Installation
 
 ```bash
 git clone https://github.com/U-GOD/StableGuard.git
 cd StableGuard
+npm install
+```
 
-# Contracts
+### 2. Smart Contracts (Sepolia)
+
+```bash
 cd contracts
 forge install
-forge build
 forge test
-
-# Frontend
-cd ../frontend
-npm install
-npm run dev
+# Deploy (requires .env)
+source .env && forge script script/Deploy.s.sol --rpc-url $SEPOLIA_RPC_URL --broadcast
 ```
 
-### Environment Variables
+### 3. Run Workflows (Simulation)
 
-Copy `.env.example` to `.env` and fill in:
+You can simulate the entire loop locally using the CRE CLI:
 
+```bash
+cd workflows
+# Simulate Reserve Health Check
+cre workflow simulate ./reserve-health-check --target=staging-settings
+
+# Simulate AI Parser
+cre workflow simulate ./regulatory-parser --target=staging-settings
 ```
-SEPOLIA_RPC_URL=
-PRIVATE_KEY=
-GEMINI_API_KEY=
-ETHERSCAN_API_KEY=
-```
 
-## Regulatory Compliance
+## Compliance Standards (GENIUS Act)
 
-StableGuard automates verification of key compliance requirements for modern stablecoins:
+StableGuard hardcodes the following checks based on the **Stablecoin Transparency Act (GENIUS)**:
 
-- 1:1 reserve backing ratio
-- Permitted asset types only (T-bills, FDIC-insured deposits)
-- No yield or interest payments to holders (where applicable)
-- No rehypothecation of reserves
-- Monthly reporting cadence enforcement
-- Regulatory update tracking via AI parser
+1.  **Reserve Ratio >= 100%**: `totalReserves >= totalSupply`
+2.  **Permitted Assets**: Reserves must be Cash, T-Bills, or Repos.
+3.  **No Rehypothecation**: Reserves cannot be pledged or lent out.
+4.  **Audit Frequency**: Attestations must be < 30 days old.
+
+## Tech Stack
+
+*   **Orchestration**: Chainlink Runtime Environment (CRE)
+*   **Contracts**: Solidity 0.8.30, Foundry
+*   **AI**: Google Gemini 1.5 Flash
+*   **Data**: DeFiLlama, Etherscan, Congress.gov
+*   **Network**: Ethereum Sepolia
 
 ## License
 
