@@ -49,7 +49,8 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
   // 2. Ask Gemini (using our new module)
   let analysisResult: string;
   try {
-    analysisResult = askGemini(runtime, regText);
+    const geminiResult = askGemini(runtime, regText);
+    analysisResult = geminiResult.geminiResponse;
   } catch (e) {
     runtime.log("Gemini module execution failed. " + e);
     analysisResult = JSON.stringify({ requiresAction: false, summary: "AI Module Failed" });
@@ -81,7 +82,7 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
             level: "WARNING",
             message: "New Regulatory Compliance Requirement Detected",
             analysis: analysisResult.substring(0, 500),
-            timestamp: new Date().toISOString(),
+            timestamp: String(Math.floor(Date.now() / 1000)),
             source: "StableGuard AI Regulatory Parser",
           });
           const resp = sender.sendRequest({
@@ -94,7 +95,7 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
         },
         consensusIdenticalAggregation()
       );
-      sendAlert().result();
+      sendAlert();
     } catch {
       runtime.log("Webhook notification failed.");
     }
