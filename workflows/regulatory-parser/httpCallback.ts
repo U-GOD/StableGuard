@@ -17,9 +17,9 @@ type Config = GeminiConfig & {
 };
 
 export function onHttpTrigger(runtime: Runtime<Config>, payload: HTTPPayload): string {
-    runtime.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    runtime.log("====================================================");
     runtime.log("CRE Workflow: HTTP Trigger - Manual Regulatory Parse");
-    runtime.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    runtime.log("====================================================");
 
     // Step 1: Parse and validate the incoming payload
     if (!payload.input || payload.input.length === 0) {
