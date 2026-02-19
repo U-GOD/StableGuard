@@ -23,11 +23,11 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   const config = runtime.config;
   const httpClient = new HTTPClient();
 
-  runtime.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  runtime.log("====================================================");
   runtime.log("CRE Workflow: Log Trigger - Compliance Alert Monitor");
-  runtime.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  runtime.log("====================================================");
 
-  // ─── Step 1: Decode the ComplianceOracle ReportUpdated event ───
+  // --- Step 1: Decode the ComplianceOracle ReportUpdated event ---
 
   const topics = log.topics.map((t: Uint8Array) => bytesToHex(t)) as [
     `0x${string}`,
@@ -43,9 +43,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   const stablecoinSymbol = decodedLog.args.stablecoinSymbol as string;
 
   // Decode bytes4 symbol to readable string
-  const symbolStr = Buffer.from(stablecoinSymbol.replace("0x", ""), "hex")
-    .toString("utf8")
-    .replace(/\0/g, "");
+  const symbolStr = bytes4HexToString(stablecoinSymbol);
 
   runtime.log(`[Step 1] ComplianceOracle Update Detected`);
   runtime.log(`[Step 1] Stablecoin: ${symbolStr}`);
@@ -53,10 +51,10 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   runtime.log(`[Step 1] Ratio: ${ratioBps} bps`);
   runtime.log(`[Step 1] GENIUS Act Compliant: ${compliant}`);
 
-  // ─── Step 2: Alert if Non-Compliant ───
+  // --- Step 2: Alert if Non-Compliant ---
 
   if (!compliant) {
-    runtime.log(`[Step 2] ⚠️ ${symbolStr} COMPLIANCE BREACH! Sending Alert...`);
+    runtime.log(`[Step 2] WARNING: ${symbolStr} COMPLIANCE BREACH! Sending Alert...`);
 
     try {
       const sendAlert = httpClient.sendRequest(
@@ -69,7 +67,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
             ratio: ratioBps,
             compliant: false,
             txHash: bytesToHex(log.txHash),
-            timestamp: new Date().toISOString(),
+            timestamp: String(Math.floor(Date.now() / 1000)),
             source: "StableGuard Compliance Monitor",
           });
 
@@ -83,19 +81,19 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
         },
         consensusIdenticalAggregation()
       );
-      sendAlert().result();
-      runtime.log(`[Step 2] ✓ Alert sent to webhook for ${symbolStr}.`);
+      sendAlert();
+      runtime.log(`[Step 2] Alert sent to webhook for ${symbolStr}.`);
     } catch {
       runtime.log("[Step 2] Webhook unavailable (simulation mode).");
     }
     return `breach_alert_sent:${symbolStr}`;
   } else {
-    runtime.log(`[Step 2] ✅ ${symbolStr} is GENIUS Act compliant. No action needed.`);
+    runtime.log(`[Step 2] OK: ${symbolStr} is GENIUS Act compliant. No action needed.`);
     return `compliant:${symbolStr}`;
   }
 };
 
-// ─── Workflow Setup ───
+// --- Workflow Setup ---
 
 const initWorkflow = (config: Config) => {
   const network = getNetwork({
@@ -125,4 +123,16 @@ const initWorkflow = (config: Config) => {
 export async function main() {
   const runner = await Runner.newRunner<Config>();
   await runner.run(initWorkflow);
+}
+
+/** Decode a bytes4 hex string like "0x55534443" to "USDC" */
+function bytes4HexToString(hex: string): string {
+  const h = hex.startsWith("0x") ? hex.slice(2) : hex;
+  let str = "";
+  for (let i = 0; i < h.length; i += 2) {
+    const code = parseInt(h.substring(i, i + 2), 16);
+    if (code === 0) break;
+    str += String.fromCharCode(code);
+  }
+  return str;
 }
