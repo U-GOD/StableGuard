@@ -1,6 +1,5 @@
 {
-  "schedule": "*/5 * * * *",
-  "safeguardControllerAddress": "0x0000000000000000000000000000000000000000",
+  "alertControllerAddress": "0x0000000000000000000000000000000000000000",
   "oracleAddress": "0x0000000000000000000000000000000000000000",
-  "webhookUrl": "https://api.stableguard.mock/alerts"
+  "webhookUrl": "http://localhost:3000/api/alerts"
 }
