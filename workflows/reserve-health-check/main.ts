@@ -11,132 +11,266 @@ import {
   TxStatus,
   bytesToHex,
 } from "@chainlink/cre-sdk";
-import { encodeAbiParameters, parseAbiParameters } from "viem";
+import { encodeAbiParameters } from "viem";
+import { COMPLIANCE_REPORT_PARAMS } from "./contracts/abi/ReserveOracle";
 
 type Config = {
   schedule: string;
-  stableCoinAddress: string;
   oracleAddress: string;
-  reserveApiUrl: string;
+  usdcSepoliaAddress: string;
+  defillamaUsdcEndpoint: string;
+  defillamaUsdtEndpoint: string;
 };
 
-const WARNING_RATIO = 10200n;
-const CRITICAL_RATIO = 10050n;
-const PAUSE_RATIO = 10000n;
+// GENIUS Act compliance thresholds (basis points: 10000 = 100%)
+const WARNING_RATIO = 10200n;  // 102% — early warning
+const CRITICAL_RATIO = 10050n; // 100.5% — critical
+const BREACH_RATIO = 10000n;   // 100% — breach / depeg risk
 
-import { UPDATE_REPORT_PARAMS } from "./contracts/abi/ReserveOracle";
+// ─── Main Workflow Handler ───
 
 const onCronTrigger = (runtime: Runtime<Config>): string => {
   const config = runtime.config;
-  const now = runtime.now(); // Date object
+  const now = runtime.now();
 
-  const sepoliaEvm = new EVMClient(EVMClient.SUPPORTED_CHAIN_SELECTORS["ethereum-testnet-sepolia"]);
+  const sepoliaEvm = new EVMClient(
+    EVMClient.SUPPORTED_CHAIN_SELECTORS["ethereum-testnet-sepolia"]
+  );
   const httpClient = new HTTPClient();
 
-  // 1. Read totalSupply from StableCoin
-  let totalSupply: bigint;
+  // ─────────────────────────────────────────────
+  // Step 1: Fetch USDC Reserve Data (DeFiLlama)
+  // ─────────────────────────────────────────────
+  runtime.log("━━━ StableGuard Compliance Check ━━━");
+
+  const usdcData = fetchStablecoinData(runtime, httpClient, config.defillamaUsdcEndpoint, "USDC");
+  const usdtData = fetchStablecoinData(runtime, httpClient, config.defillamaUsdtEndpoint, "USDT");
+
+  // ─────────────────────────────────────────────
+  // Step 2: Read real USDC totalSupply on Sepolia
+  // ─────────────────────────────────────────────
+  let usdcOnChainSupply: bigint;
   try {
-    const callData = hexToBytes("0x18160ddd"); // totalSupply() selector
     const supplyResult = sepoliaEvm.callContract(runtime, {
       call: {
-        to: hexToBytes(config.stableCoinAddress),
-        data: callData,
+        to: config.usdcSepoliaAddress as `0x${string}`,
+        data: "0x18160ddd", // totalSupply() selector
       },
     });
     const reply = supplyResult.result();
-    totalSupply = bytesToBigInt(reply.data);
+    usdcOnChainSupply = bytesToBigInt(reply.data);
+    runtime.log(`[EVM Read] USDC Sepolia totalSupply: ${usdcOnChainSupply}`);
   } catch {
-    totalSupply = 10_000_000n * 10n ** 18n;
-    runtime.log("EVM read unavailable (simulation), using fallback supply.");
+    usdcOnChainSupply = 0n;
+    runtime.log("[EVM Read] Sepolia USDC read failed (simulation mode).");
   }
 
-  // 2. Fetch reserve data
-  let totalReserves: bigint;
+  // ─────────────────────────────────────────────
+  // Step 3: Compute Compliance for Each Stablecoin
+  // ─────────────────────────────────────────────
+  const reportTimestamp = BigInt(Math.floor(now.getTime() / 1000));
+  const proofHash = ("0x" + "0".repeat(64)) as `0x${string}`;
+
+  // Process USDC
+  const usdcReport = computeComplianceReport(
+    runtime, usdcData, "USDC", reportTimestamp, proofHash
+  );
+
+  // Process USDT
+  const usdtReport = computeComplianceReport(
+    runtime, usdtData, "USDT", reportTimestamp, proofHash
+  );
+
+  // ─────────────────────────────────────────────
+  // Step 4: Write Reports On-Chain
+  // ─────────────────────────────────────────────
+  writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdcReport);
+  writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdtReport);
+
+  const summary = `USDC: ${usdcReport.status} (${usdcReport.ratioBps}bps) | USDT: ${usdtReport.status} (${usdtReport.ratioBps}bps)`;
+  runtime.log(`━━━ Result: ${summary} ━━━`);
+  return summary;
+};
+
+// ─── Helpers ───
+
+interface StablecoinData {
+  totalReserves: bigint;
+  totalSupply: bigint;
+  permittedAssetsOnly: boolean;
+  noRehypothecation: boolean;
+  lastAuditTimestamp: bigint;
+}
+
+interface ComplianceResult {
+  ratioBps: number;
+  status: string;
+  compliant: boolean;
+  encodedReport: `0x${string}`;
+}
+
+/**
+ * Fetches stablecoin data from DeFiLlama and derives GENIUS Act compliance flags.
+ */
+function fetchStablecoinData(
+  runtime: Runtime<Config>,
+  httpClient: HTTPClient,
+  endpoint: string,
+  symbol: string
+): StablecoinData {
   try {
-    const fetchReserves = httpClient.sendRequest(
+    const fetchResult = httpClient.sendRequest(
       runtime,
       (sender) => {
-        const resp = sender.sendRequest({
-          url: config.reserveApiUrl,
-          method: "GET",
-        });
-        return resp.result();
+        const resp = sender.sendRequest({ url: endpoint, method: "GET" });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return resp.result() as any;
       },
       consensusIdenticalAggregation()
     );
-    const data = json(fetchReserves()) as { totalReserves: string };
-    totalReserves = BigInt(data.totalReserves);
-  } catch {
-    totalReserves = 10_500_000n * 10n ** 18n;
-    runtime.log("HTTP unavailable (simulation), using fallback reserves.");
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = json(fetchResult()) as any;
+
+    // DeFiLlama returns { circulating: { peggedUSD: N }, ... }
+    const circulatingUsd = body?.circulating?.peggedUSD ?? 0;
+    const totalSupply = BigInt(Math.floor(circulatingUsd)) * 10n ** 18n;
+
+    // For reserves, DeFiLlama doesn't separate reserves from supply
+    // In a production system, we'd use Circle/Tether transparency APIs
+    // For now: reserves = circulating (1:1 assumption, adjusted by compliance flags)
+    const totalReserves = totalSupply;
+
+    // GENIUS Act Compliance Flags
+    // These are derived from known issuer transparency data:
+    // - USDC (Circle): Publicly attests reserves in T-bills + FDIC deposits → compliant
+    // - USDT (Tether): Has historically held commercial paper, crypto → often non-compliant
+    const permittedAssetsOnly = symbol === "USDC"; // Circle uses only permitted assets
+    const noRehypothecation = true; // Neither issuer publicly admits to rehypothecation
+
+    // Last audit timestamps (Circle publishes monthly, Tether is less regular)
+    // In production this would be fetched from Circle's API / Tether's transparency page
+    const now = Math.floor(Date.now() / 1000);
+    const lastAuditTimestamp = symbol === "USDC"
+      ? BigInt(now - 15 * 86400) // Circle: ~15 days ago (monthly attestation)
+      : BigInt(now - 45 * 86400); // Tether: ~45 days ago (less frequent)
+
+    runtime.log(`[HTTP] ${symbol}: supply=$${circulatingUsd.toLocaleString()}, permittedAssets=${permittedAssetsOnly}`);
+
+    return { totalReserves, totalSupply, permittedAssetsOnly, noRehypothecation, lastAuditTimestamp };
+  } catch (e) {
+    runtime.log(`[HTTP] ${symbol} fetch failed: ${e}. Using fallback.`);
+    const fallback = symbol === "USDC" ? 45_000_000_000n : 140_000_000_000n;
+    return {
+      totalReserves: fallback * 10n ** 18n,
+      totalSupply: fallback * 10n ** 18n,
+      permittedAssetsOnly: symbol === "USDC",
+      noRehypothecation: true,
+      lastAuditTimestamp: 0n,
+    };
+  }
+}
+
+/**
+ * Computes compliance status and encodes the report for on-chain submission.
+ */
+function computeComplianceReport(
+  runtime: Runtime<Config>,
+  data: StablecoinData,
+  symbol: string,
+  timestamp: bigint,
+  proofHash: `0x${string}`
+): ComplianceResult {
+  if (data.totalSupply === 0n) {
+    runtime.log(`[Compute] ${symbol}: zero supply, skipping.`);
+    return { ratioBps: 0, status: "SKIPPED", compliant: false, encodedReport: "0x" as `0x${string}` };
   }
 
-  // 3. Compute health
-  if (totalSupply === 0n) {
-    runtime.log("Total supply is zero. Skipping.");
-    return "skipped: zero supply";
-  }
+  const ratioBps = Number((data.totalReserves * 10000n) / data.totalSupply);
 
-  const ratioBps = (totalReserves * 10000n) / totalSupply;
-  const compliant = ratioBps >= WARNING_RATIO;
+  // Reserve ratio status
   let status = "HEALTHY";
-  if (ratioBps < PAUSE_RATIO) status = "EMERGENCY";
-  else if (ratioBps < CRITICAL_RATIO) status = "CRITICAL";
-  else if (ratioBps < WARNING_RATIO) status = "WARNING";
+  if (ratioBps < Number(BREACH_RATIO)) status = "BREACH";
+  else if (ratioBps < Number(CRITICAL_RATIO)) status = "CRITICAL";
+  else if (ratioBps < Number(WARNING_RATIO)) status = "WARNING";
 
-  runtime.log(`Reserve Health: ratio=${ratioBps}bps status=${status}`);
+  // Overall GENIUS Act compliance: ratio OK + all flags pass + audit not overdue
+  const auditOverdue = data.lastAuditTimestamp > 0n &&
+    (timestamp - data.lastAuditTimestamp > 30n * 86400n);
+  const compliant = ratioBps >= Number(WARNING_RATIO) &&
+    data.permittedAssetsOnly &&
+    data.noRehypothecation &&
+    !auditOverdue;
 
-  // 4. EVM Writes (Bootcamp Style)
+  runtime.log(`[Compute] ${symbol}: ratio=${ratioBps}bps status=${status} compliant=${compliant}`);
+
+  if (!data.permittedAssetsOnly) runtime.log(`  ⚠ ${symbol}: Non-permitted asset types in reserves`);
+  if (!data.noRehypothecation) runtime.log(`  ⚠ ${symbol}: Possible rehypothecation detected`);
+  if (auditOverdue) runtime.log(`  ⚠ ${symbol}: Audit overdue (>30 days)`);
+
+  // Encode for on-chain submission
+  // Symbol as bytes4: "USDC" → 0x55534443, "USDT" → 0x55534454
+  const symbolBytes = ("0x" + Buffer.from(symbol.padEnd(4, "\0")).toString("hex")) as `0x${string}`;
+
+  const encodedReport = encodeAbiParameters(COMPLIANCE_REPORT_PARAMS, [
+    {
+      timestamp,
+      totalReserves: data.totalReserves,
+      totalSupply: data.totalSupply,
+      ratioBps,
+      compliant,
+      proofHash,
+      stablecoinSymbol: symbolBytes,
+      permittedAssetsOnly: data.permittedAssetsOnly,
+      noRehypothecation: data.noRehypothecation,
+      lastAuditTimestamp: data.lastAuditTimestamp,
+    },
+  ]);
+
+  return { ratioBps, status, compliant, encodedReport };
+}
+
+/**
+ * Writes a compliance report to the ComplianceOracle on Sepolia.
+ */
+function writeReportOnChain(
+  runtime: Runtime<Config>,
+  evm: EVMClient,
+  oracleAddress: string,
+  report: ComplianceResult
+): void {
+  if (report.status === "SKIPPED") return;
+
   try {
-    // A. Encode Data
-    const reportTimestamp = BigInt(Math.floor(now.getTime() / 1000));
-    const proofHash = "0x" + "0".repeat(64); // Placeholder for ZK proof hash (Phase 5)
-
-    const reportData = encodeAbiParameters(UPDATE_REPORT_PARAMS, [
-      {
-        timestamp: reportTimestamp,
-        totalReserves: totalReserves,
-        totalSupply: totalSupply,
-        ratioBps: Number(ratioBps),
-        compliant: compliant,
-        proofHash: proofHash as `0x${string}`,
-      },
-    ]);
-
-    // B. Generate Signed Report
     const reportResponse = runtime
       .report({
-        encodedPayload: hexToBase64(reportData),
+        encodedPayload: hexToBase64(report.encodedReport),
         encoderName: "evm",
         signingAlgo: "ecdsa",
         hashingAlgo: "keccak256",
       })
       .result();
 
-    // C. Write Report
-    const writeResult = sepoliaEvm
+    const writeResult = evm
       .writeReport(runtime, {
-        receiver: config.oracleAddress,
+        receiver: oracleAddress,
         report: reportResponse,
-        gasConfig: {
-            gasLimit: "500000" // Hardcoded limit as per bootcamp example
-        }
+        gasConfig: { gasLimit: "500000" },
       })
       .result();
 
     if (writeResult.txStatus === TxStatus.SUCCESS) {
-        const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
-        runtime.log(`Oracle report submitted. Tx: ${txHash}`);
+      const txHash = bytesToHex(writeResult.txHash || new Uint8Array(32));
+      runtime.log(`[EVM Write] Report submitted. Tx: ${txHash}`);
     } else {
-        runtime.log(`Oracle report failed: ${writeResult.txStatus}`);
+      runtime.log(`[EVM Write] Report failed: ${writeResult.txStatus}`);
     }
-
   } catch (e) {
-    runtime.log("EVM write unavailable (simulation) or failed: " + e);
+    runtime.log(`[EVM Write] Unavailable (simulation): ${e}`);
   }
+}
 
-  return `ratio=${ratioBps}bps status=${status} compliant=${compliant}`;
-};
+// ─── Workflow Setup ───
 
 const initWorkflow = (config: Config) => {
   const cron = new CronCapability();
@@ -150,15 +284,7 @@ export async function main() {
   await runner.run(initWorkflow);
 }
 
-// Helpers
-function hexToBytes(hex: string): Uint8Array {
-  const h = hex.startsWith("0x") ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(h.length / 2);
-  for (let i = 0; i < h.length; i += 2) {
-    bytes[i / 2] = parseInt(h.substring(i, i + 2), 16);
-  }
-  return bytes;
-}
+// ─── Utility Functions ───
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
   if (bytes.length === 0) return 0n;
