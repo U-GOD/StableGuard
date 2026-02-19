@@ -22,7 +22,7 @@ contract AlertControllerTest is Test {
         vm.stopPrank();
     }
 
-    // ─── Helper ───
+    // --- Helper ---
     function _pushReport(
         bytes4 symbol,
         uint16 ratioBps,
@@ -49,7 +49,7 @@ contract AlertControllerTest is Test {
         oracle.updateReport(report);
     }
 
-    // ─── Ratio-Based Alerts ───
+    // --- Ratio-Based Alerts ---
 
     function test_HealthyAlert() public {
         _pushReport(bytes4("USDC"), 10500, true, true, true, block.timestamp);
@@ -61,7 +61,7 @@ contract AlertControllerTest is Test {
     }
 
     function test_WarningAlert() public {
-        // Ratio between CRITICAL (10050) and WARNING (10200) → Warning
+        // Ratio between CRITICAL (10050) and WARNING (10200) -> Warning
         _pushReport(bytes4("USDC"), 10100, true, true, true, block.timestamp);
 
         vm.expectEmit(true, false, false, true);
@@ -71,7 +71,7 @@ contract AlertControllerTest is Test {
     }
 
     function test_CriticalAlert() public {
-        // Ratio between BREACH (10000) and CRITICAL (10050) → Critical
+        // Ratio between BREACH (10000) and CRITICAL (10050) -> Critical
         _pushReport(bytes4("USDT"), 10020, false, true, true, block.timestamp);
 
         vm.expectEmit(true, false, false, true);
@@ -81,7 +81,7 @@ contract AlertControllerTest is Test {
     }
 
     function test_BreachAlert() public {
-        // Ratio below BREACH (10000) → Depeg risk
+        // Ratio below BREACH (10000) -> Depeg risk
         _pushReport(bytes4("USDT"), 9800, false, true, true, block.timestamp);
 
         vm.expectEmit(true, false, false, true);
@@ -90,7 +90,7 @@ contract AlertControllerTest is Test {
         controller.evaluateAndAlert();
     }
 
-    // ─── GENIUS Act Compliance Violations ───
+    // --- GENIUS Act Compliance Violations ---
 
     function test_PermittedAssetsViolation() public {
         _pushReport(bytes4("USDT"), 10500, false, false, true, block.timestamp);
@@ -134,7 +134,7 @@ contract AlertControllerTest is Test {
     }
 
     function test_AuditNotOverdue() public {
-        // Audit was 15 days ago — should NOT emit violation
+        // Audit was 15 days ago -- should NOT emit violation
         uint256 recentAudit = block.timestamp - 15 days;
         _pushReport(bytes4("USDC"), 10500, true, true, true, recentAudit);
 
@@ -145,7 +145,7 @@ contract AlertControllerTest is Test {
         controller.evaluateAndAlert();
     }
 
-    // ─── Multiple Violations at Once ───
+    // --- Multiple Violations at Once ---
 
     function test_MultipleViolationsEmitted() public {
         // Bad on everything: low ratio + non-permitted assets + rehypothecated + overdue audit
@@ -159,14 +159,14 @@ contract AlertControllerTest is Test {
         assertEq(oracle.getReportCount(), 1);
     }
 
-    // ─── Reverts when no reports ───
+    // --- Reverts when no reports ---
 
     function test_RevertsWhenNoReports() public {
         vm.expectRevert("No reports available");
         controller.evaluateAndAlert();
     }
 
-    // ─── Owner Functions ───
+    // --- Owner Functions ---
 
     function test_SetOracle() public {
         ComplianceOracle newOracle = new ComplianceOracle(admin);
@@ -183,10 +183,9 @@ contract AlertControllerTest is Test {
         controller.setOracle(address(0));
     }
 
-    // ─── Edge: Audit timestamp of 0 should NOT trigger overdue ───
+    // --- Edge: Audit timestamp of 0 should NOT trigger overdue ---
 
     function test_ZeroAuditTimestampNoViolation() public {
-        // lastAuditTimestamp = 0 means "not tracked" — should not flag
         _pushReport(bytes4("USDC"), 10500, true, true, true, 0);
 
         vm.expectEmit(true, false, false, true);

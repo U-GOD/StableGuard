@@ -19,7 +19,7 @@ contract ComplianceOracleTest is Test {
         vm.stopPrank();
     }
 
-    // ─── Helper to build a report ───
+    // --- Helper to build a report ---
     function _makeReport(
         bytes4 symbol,
         uint16 ratioBps,
@@ -43,7 +43,7 @@ contract ComplianceOracleTest is Test {
             });
     }
 
-    // ─── Basic Functionality ───
+    // --- Basic Functionality ---
 
     function test_InitialState() public view {
         assertEq(oracle.getReportCount(), 0);
@@ -112,7 +112,7 @@ contract ComplianceOracleTest is Test {
         oracle.getLatestReport();
     }
 
-    // ─── Multi-Token Reports ───
+    // --- Multi-Token Reports ---
 
     function test_MultipleStablecoins() public {
         ComplianceOracle.ComplianceReport memory usdcReport = _makeReport(
@@ -209,7 +209,7 @@ contract ComplianceOracleTest is Test {
         oracle.getLatestReportForSymbol(bytes4("DAI!"));
     }
 
-    // ─── Access Control ───
+    // --- Access Control ---
 
     function test_UnauthorizedCannotUpdateReport() public {
         ComplianceOracle.ComplianceReport memory report = _makeReport(
@@ -248,7 +248,7 @@ contract ComplianceOracleTest is Test {
         assertEq(oracle.getReportCount(), 1);
     }
 
-    // ─── Report History (getReports) ───
+    // --- Report History (getReports) ---
 
     function test_GetReports() public {
         vm.startPrank(reporter);
@@ -281,7 +281,7 @@ contract ComplianceOracleTest is Test {
         oracle.getReports(0, 1);
     }
 
-    // ─── GENIUS Act Fields ───
+    // --- GENIUS Act Fields ---
 
     function test_PermittedAssetsFlag() public {
         ComplianceOracle.ComplianceReport memory report = _makeReport(
@@ -339,7 +339,7 @@ contract ComplianceOracleTest is Test {
         assertEq(stored.lastAuditTimestamp, auditTime);
     }
 
-    // ─── Edge Cases ───
+    // --- Edge Cases ---
 
     function test_ZeroRatio() public {
         ComplianceOracle.ComplianceReport memory report = _makeReport(
