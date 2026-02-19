@@ -111,7 +111,7 @@ const buildGeminiRequest =
     };
 
     const bodyBytes = new TextEncoder().encode(JSON.stringify(requestData));
-    const body = Buffer.from(bodyBytes).toString("base64");
+    const body = uint8ArrayToBase64(bodyBytes);
 
     const req = {
       url: `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`,
@@ -148,3 +148,19 @@ const buildGeminiRequest =
       rawJsonString: bodyText,
     };
   };
+
+/** WASM-safe base64 encoder (Buffer.from is not available in CRE WASM) */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let result = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    result += chars[b0 >> 2];
+    result += chars[((b0 & 3) << 4) | (b1 >> 4)];
+    result += i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+    result += i + 2 < bytes.length ? chars[b2 & 63] : "=";
+  }
+  return result;
+}
