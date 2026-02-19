@@ -1,6 +1,6 @@
 import { parseAbiParameters, parseAbi, toEventSelector } from "viem";
 
-// ─── ComplianceOracle ABI ───
+// --- ComplianceOracle ABI ---
 
 // ComplianceReport struct for encoding
 // Matches: struct ComplianceReport { uint256 timestamp; uint256 totalReserves; uint256 totalSupply;
