@@ -12,8 +12,7 @@ contract AlertControllerTest is Test {
     address public reporter = address(2);
 
     function setUp() public {
-        // Set a realistic block timestamp to prevent underflow in time calculations
-        vm.warp(1_700_000_000); // Nov 2023-ish
+        vm.warp(1_700_000_000);
 
         vm.startPrank(admin);
         oracle = new ComplianceOracle(admin);
@@ -29,7 +28,8 @@ contract AlertControllerTest is Test {
         bool compliant,
         bool permittedAssets,
         bool noRehypo,
-        uint256 lastAudit
+        uint256 lastAudit,
+        uint8 score
     ) internal {
         ComplianceOracle.ComplianceReport memory report = ComplianceOracle
             .ComplianceReport({
@@ -42,7 +42,8 @@ contract AlertControllerTest is Test {
                 stablecoinSymbol: symbol,
                 permittedAssetsOnly: permittedAssets,
                 noRehypothecation: noRehypo,
-                lastAuditTimestamp: lastAudit
+                lastAuditTimestamp: lastAudit,
+                complianceScore: score
             });
 
         vm.prank(reporter);
@@ -52,7 +53,15 @@ contract AlertControllerTest is Test {
     // --- Ratio-Based Alerts ---
 
     function test_HealthyAlert() public {
-        _pushReport(bytes4("USDC"), 10500, true, true, true, block.timestamp);
+        _pushReport(
+            bytes4("USDC"),
+            10500,
+            true,
+            true,
+            true,
+            block.timestamp,
+            100
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.Healthy(bytes4("USDC"), 10500);
@@ -61,8 +70,15 @@ contract AlertControllerTest is Test {
     }
 
     function test_WarningAlert() public {
-        // Ratio between CRITICAL (10050) and WARNING (10200) -> Warning
-        _pushReport(bytes4("USDC"), 10100, true, true, true, block.timestamp);
+        _pushReport(
+            bytes4("USDC"),
+            10100,
+            true,
+            true,
+            true,
+            block.timestamp,
+            64
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.WarningIssued(bytes4("USDC"), 10100);
@@ -71,8 +87,15 @@ contract AlertControllerTest is Test {
     }
 
     function test_CriticalAlert() public {
-        // Ratio between BREACH (10000) and CRITICAL (10050) -> Critical
-        _pushReport(bytes4("USDT"), 10020, false, true, true, block.timestamp);
+        _pushReport(
+            bytes4("USDT"),
+            10020,
+            false,
+            true,
+            true,
+            block.timestamp,
+            48
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.CriticalAlert(bytes4("USDT"), 10020);
@@ -81,8 +104,15 @@ contract AlertControllerTest is Test {
     }
 
     function test_BreachAlert() public {
-        // Ratio below BREACH (10000) -> Depeg risk
-        _pushReport(bytes4("USDT"), 9800, false, true, true, block.timestamp);
+        _pushReport(
+            bytes4("USDT"),
+            9800,
+            false,
+            true,
+            true,
+            block.timestamp,
+            32
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.BreachDetected(bytes4("USDT"), 9800);
@@ -93,7 +123,15 @@ contract AlertControllerTest is Test {
     // --- GENIUS Act Compliance Violations ---
 
     function test_PermittedAssetsViolation() public {
-        _pushReport(bytes4("USDT"), 10500, false, false, true, block.timestamp);
+        _pushReport(
+            bytes4("USDT"),
+            10500,
+            false,
+            false,
+            true,
+            block.timestamp,
+            60
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.ComplianceViolation(
@@ -106,7 +144,15 @@ contract AlertControllerTest is Test {
     }
 
     function test_RehypothecationViolation() public {
-        _pushReport(bytes4("USDC"), 10500, false, true, false, block.timestamp);
+        _pushReport(
+            bytes4("USDC"),
+            10500,
+            false,
+            true,
+            false,
+            block.timestamp,
+            60
+        );
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.ComplianceViolation(
@@ -119,9 +165,8 @@ contract AlertControllerTest is Test {
     }
 
     function test_AuditOverdueViolation() public {
-        // Audit was 31 days ago
         uint256 oldAudit = block.timestamp - 31 days;
-        _pushReport(bytes4("USDC"), 10500, true, true, true, oldAudit);
+        _pushReport(bytes4("USDC"), 10500, true, true, true, oldAudit, 70);
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.ComplianceViolation(
@@ -134,13 +179,139 @@ contract AlertControllerTest is Test {
     }
 
     function test_AuditNotOverdue() public {
-        // Audit was 15 days ago -- should NOT emit violation
         uint256 recentAudit = block.timestamp - 15 days;
-        _pushReport(bytes4("USDC"), 10500, true, true, true, recentAudit);
+        _pushReport(bytes4("USDC"), 10500, true, true, true, recentAudit, 90);
 
-        // We only expect the Healthy event, no ComplianceViolation
         vm.expectEmit(true, false, false, true);
         emit AlertController.Healthy(bytes4("USDC"), 10500);
+
+        controller.evaluateAndAlert();
+    }
+
+    // --- Compliance Grade Events ---
+
+    function test_GradeCompliant() public {
+        _pushReport(
+            bytes4("USDC"),
+            10500,
+            true,
+            true,
+            true,
+            block.timestamp,
+            85
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDC"),
+            85,
+            "COMPLIANT"
+        );
+
+        controller.evaluateAndAlert();
+    }
+
+    function test_GradeAtRisk() public {
+        _pushReport(
+            bytes4("USDC"),
+            10200,
+            true,
+            true,
+            true,
+            block.timestamp,
+            65
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDC"),
+            65,
+            "AT_RISK"
+        );
+
+        controller.evaluateAndAlert();
+    }
+
+    function test_GradeNonCompliant() public {
+        _pushReport(
+            bytes4("USDT"),
+            9800,
+            false,
+            false,
+            false,
+            block.timestamp,
+            10
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDT"),
+            10,
+            "NON_COMPLIANT"
+        );
+
+        controller.evaluateAndAlert();
+    }
+
+    function test_GradeBoundary80() public {
+        _pushReport(
+            bytes4("USDC"),
+            10500,
+            true,
+            true,
+            true,
+            block.timestamp,
+            80
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDC"),
+            80,
+            "COMPLIANT"
+        );
+
+        controller.evaluateAndAlert();
+    }
+
+    function test_GradeBoundary50() public {
+        _pushReport(
+            bytes4("USDC"),
+            10100,
+            true,
+            true,
+            true,
+            block.timestamp,
+            50
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDC"),
+            50,
+            "AT_RISK"
+        );
+
+        controller.evaluateAndAlert();
+    }
+
+    function test_GradeBoundary49() public {
+        _pushReport(
+            bytes4("USDC"),
+            10100,
+            false,
+            false,
+            true,
+            block.timestamp,
+            49
+        );
+
+        vm.expectEmit(true, false, false, true);
+        emit AlertController.ComplianceGradeChanged(
+            bytes4("USDC"),
+            49,
+            "NON_COMPLIANT"
+        );
 
         controller.evaluateAndAlert();
     }
@@ -148,14 +319,11 @@ contract AlertControllerTest is Test {
     // --- Multiple Violations at Once ---
 
     function test_MultipleViolationsEmitted() public {
-        // Bad on everything: low ratio + non-permitted assets + rehypothecated + overdue audit
         uint256 oldAudit = block.timestamp - 45 days;
-        _pushReport(bytes4("USDT"), 9500, false, false, false, oldAudit);
+        _pushReport(bytes4("USDT"), 9500, false, false, false, oldAudit, 0);
 
-        // Should emit BreachDetected + 3 ComplianceViolations
         controller.evaluateAndAlert();
 
-        // We verify the report count is 1 (ensuring the oracle got the report)
         assertEq(oracle.getReportCount(), 1);
     }
 
@@ -183,10 +351,10 @@ contract AlertControllerTest is Test {
         controller.setOracle(address(0));
     }
 
-    // --- Edge: Audit timestamp of 0 should NOT trigger overdue ---
+    // --- Edge: Audit timestamp of 0 ---
 
     function test_ZeroAuditTimestampNoViolation() public {
-        _pushReport(bytes4("USDC"), 10500, true, true, true, 0);
+        _pushReport(bytes4("USDC"), 10500, true, true, true, 0, 100);
 
         vm.expectEmit(true, false, false, true);
         emit AlertController.Healthy(bytes4("USDC"), 10500);
