@@ -13,24 +13,26 @@ contract ComplianceOracle is AccessControl {
 
     struct ComplianceReport {
         uint256 timestamp;
-        uint256 totalReserves;       // Total reserves reported (USD, 18 decimals)
-        uint256 totalSupply;         // Total circulating supply (USD, 18 decimals)
-        uint16  ratioBps;            // Reserve ratio in basis points (10000 = 100%)
-        bool    compliant;           // Overall GENIUS Act compliance
-        bytes32 proofHash;           // ZK proof hash (Phase 5)
-        bytes4  stablecoinSymbol;    // "USDC" or "USDT" (packed for gas efficiency)
-        bool    permittedAssetsOnly; // §5: Reserves held in T-bills, FDIC deposits only
-        bool    noRehypothecation;   // §5: Reserves not re-lent or pledged
-        uint256 lastAuditTimestamp;  // §8: When issuer last published attestation
+        uint256 totalReserves; // Total reserves reported (USD, 18 decimals)
+        uint256 totalSupply; // Total circulating supply (USD, 18 decimals)
+        uint16 ratioBps; // Reserve ratio in basis points (10000 = 100%)
+        bool compliant; // Overall GENIUS Act compliance
+        bytes32 proofHash; // ZK proof hash (Phase 5)
+        bytes4 stablecoinSymbol; // "USDC" or "USDT" (packed for gas efficiency)
+        bool permittedAssetsOnly; // §5: Reserves held in T-bills, FDIC deposits only
+        bool noRehypothecation; // §5: Reserves not re-lent or pledged
+        uint256 lastAuditTimestamp; // §8: When issuer last published attestation
+        uint8 complianceScore; // 0-100 GENIUS Act composite score
     }
 
     ComplianceReport[] public reports;
 
     event ReportUpdated(
         uint256 indexed timestamp,
-        uint16  ratioBps,
-        bool    compliant,
-        bytes4  stablecoinSymbol
+        uint16 ratioBps,
+        bool compliant,
+        bytes4 stablecoinSymbol,
+        uint8 complianceScore
     );
 
     constructor(address initialAdmin) {
@@ -49,7 +51,8 @@ contract ComplianceOracle is AccessControl {
             report.timestamp,
             report.ratioBps,
             report.compliant,
-            report.stablecoinSymbol
+            report.stablecoinSymbol,
+            report.complianceScore
         );
     }
 
