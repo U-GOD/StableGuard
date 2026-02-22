@@ -41,6 +41,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   const ratioBps = decodedLog.args.ratioBps as number;
   const compliant = decodedLog.args.compliant as boolean;
   const stablecoinSymbol = decodedLog.args.stablecoinSymbol as string;
+  const complianceScore = decodedLog.args.complianceScore as number;
 
   // Decode bytes4 symbol to readable string
   const symbolStr = bytes4HexToString(stablecoinSymbol);
@@ -49,6 +50,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   runtime.log(`[Step 1] Stablecoin: ${symbolStr}`);
   runtime.log(`[Step 1] Timestamp: ${timestamp}`);
   runtime.log(`[Step 1] Ratio: ${ratioBps} bps`);
+  runtime.log(`[Step 1] Compliance Score: ${complianceScore}/100`);
   runtime.log(`[Step 1] GENIUS Act Compliant: ${compliant}`);
 
   // --- Step 2: Alert if Non-Compliant ---
@@ -65,6 +67,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
             stablecoin: symbolStr,
             message: `${symbolStr} failed GENIUS Act compliance check`,
             ratio: ratioBps,
+            complianceScore: complianceScore,
             compliant: false,
             txHash: bytesToHex(log.txHash),
             timestamp: String(Math.floor(Date.now() / 1000)),
