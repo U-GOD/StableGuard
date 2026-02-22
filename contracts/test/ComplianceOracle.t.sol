@@ -26,7 +26,8 @@ contract ComplianceOracleTest is Test {
         bool compliant,
         bool permittedAssets,
         bool noRehypo,
-        uint256 lastAudit
+        uint256 lastAudit,
+        uint8 score
     ) internal view returns (ComplianceOracle.ComplianceReport memory) {
         return
             ComplianceOracle.ComplianceReport({
@@ -39,7 +40,8 @@ contract ComplianceOracleTest is Test {
                 stablecoinSymbol: symbol,
                 permittedAssetsOnly: permittedAssets,
                 noRehypothecation: noRehypo,
-                lastAuditTimestamp: lastAudit
+                lastAuditTimestamp: lastAudit,
+                complianceScore: score
             });
     }
 
@@ -56,7 +58,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            100
         );
 
         vm.prank(reporter);
@@ -72,7 +75,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            95
         );
 
         vm.expectEmit(true, false, false, true);
@@ -80,7 +84,8 @@ contract ComplianceOracleTest is Test {
             block.timestamp,
             10500,
             true,
-            bytes4("USDC")
+            bytes4("USDC"),
+            95
         );
 
         vm.prank(reporter);
@@ -94,7 +99,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            80
         );
 
         vm.prank(reporter);
@@ -105,6 +111,7 @@ contract ComplianceOracleTest is Test {
         assertEq(latest.ratioBps, 10200);
         assertEq(latest.stablecoinSymbol, bytes4("USDT"));
         assertTrue(latest.compliant);
+        assertEq(latest.complianceScore, 80);
     }
 
     function test_GetLatestReportRevertsWhenEmpty() public {
@@ -121,7 +128,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            100
         );
         ComplianceOracle.ComplianceReport memory usdtReport = _makeReport(
             bytes4("USDT"),
@@ -129,7 +137,8 @@ contract ComplianceOracleTest is Test {
             false,
             false,
             true,
-            block.timestamp
+            block.timestamp,
+            20
         );
 
         vm.startPrank(reporter);
@@ -139,14 +148,13 @@ contract ComplianceOracleTest is Test {
 
         assertEq(oracle.getReportCount(), 2);
 
-        // Latest overall is USDT (submitted second)
         ComplianceOracle.ComplianceReport memory latest = oracle
             .getLatestReport();
         assertEq(latest.stablecoinSymbol, bytes4("USDT"));
+        assertEq(latest.complianceScore, 20);
     }
 
     function test_GetLatestReportForSymbol() public {
-        // Submit USDC, then USDT, then USDC again
         vm.startPrank(reporter);
         oracle.updateReport(
             _makeReport(
@@ -155,7 +163,8 @@ contract ComplianceOracleTest is Test {
                 true,
                 true,
                 true,
-                block.timestamp
+                block.timestamp,
+                100
             )
         );
         oracle.updateReport(
@@ -165,7 +174,8 @@ contract ComplianceOracleTest is Test {
                 true,
                 true,
                 true,
-                block.timestamp
+                block.timestamp,
+                64
             )
         );
         oracle.updateReport(
@@ -175,20 +185,21 @@ contract ComplianceOracleTest is Test {
                 true,
                 true,
                 true,
-                block.timestamp
+                block.timestamp,
+                96
             )
         );
         vm.stopPrank();
 
-        // Should find the LATEST USDC (third report, ratio 10400)
         ComplianceOracle.ComplianceReport memory usdcLatest = oracle
             .getLatestReportForSymbol(bytes4("USDC"));
         assertEq(usdcLatest.ratioBps, 10400);
+        assertEq(usdcLatest.complianceScore, 96);
 
-        // Should find the only USDT (second report, ratio 10100)
         ComplianceOracle.ComplianceReport memory usdtLatest = oracle
             .getLatestReportForSymbol(bytes4("USDT"));
         assertEq(usdtLatest.ratioBps, 10100);
+        assertEq(usdtLatest.complianceScore, 64);
     }
 
     function test_GetLatestReportForSymbolRevertsWhenNone() public {
@@ -200,11 +211,11 @@ contract ComplianceOracleTest is Test {
                 true,
                 true,
                 true,
-                block.timestamp
+                block.timestamp,
+                100
             )
         );
 
-        // DAI! has no reports
         vm.expectRevert("No reports for this stablecoin");
         oracle.getLatestReportForSymbol(bytes4("DAI!"));
     }
@@ -218,7 +229,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            100
         );
 
         vm.expectRevert();
@@ -239,7 +251,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            100
         );
 
         vm.prank(newReporter);
@@ -248,7 +261,7 @@ contract ComplianceOracleTest is Test {
         assertEq(oracle.getReportCount(), 1);
     }
 
-    // --- Report History (getReports) ---
+    // --- Report History ---
 
     function test_GetReports() public {
         vm.startPrank(reporter);
@@ -260,7 +273,8 @@ contract ComplianceOracleTest is Test {
                     true,
                     true,
                     true,
-                    block.timestamp
+                    block.timestamp,
+                    uint8(60 + i * 10)
                 )
             );
         }
@@ -272,8 +286,8 @@ contract ComplianceOracleTest is Test {
         );
         assertEq(batch.length, 3);
         assertEq(batch[0].ratioBps, 10100);
-        assertEq(batch[1].ratioBps, 10200);
-        assertEq(batch[2].ratioBps, 10300);
+        assertEq(batch[0].complianceScore, 70);
+        assertEq(batch[2].complianceScore, 90);
     }
 
     function test_GetReportsRevertsOutOfBounds() public {
@@ -290,7 +304,8 @@ contract ComplianceOracleTest is Test {
             false,
             false,
             true,
-            block.timestamp
+            block.timestamp,
+            40
         );
 
         vm.prank(reporter);
@@ -300,6 +315,7 @@ contract ComplianceOracleTest is Test {
             .getLatestReport();
         assertFalse(stored.permittedAssetsOnly);
         assertFalse(stored.compliant);
+        assertEq(stored.complianceScore, 40);
     }
 
     function test_RehypothecationFlag() public {
@@ -309,7 +325,8 @@ contract ComplianceOracleTest is Test {
             false,
             true,
             false,
-            block.timestamp
+            block.timestamp,
+            60
         );
 
         vm.prank(reporter);
@@ -318,6 +335,7 @@ contract ComplianceOracleTest is Test {
         ComplianceOracle.ComplianceReport memory stored = oracle
             .getLatestReport();
         assertFalse(stored.noRehypothecation);
+        assertEq(stored.complianceScore, 60);
     }
 
     function test_AuditTimestamp() public {
@@ -328,7 +346,8 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            auditTime
+            auditTime,
+            90
         );
 
         vm.prank(reporter);
@@ -337,6 +356,61 @@ contract ComplianceOracleTest is Test {
         ComplianceOracle.ComplianceReport memory stored = oracle
             .getLatestReport();
         assertEq(stored.lastAuditTimestamp, auditTime);
+        assertEq(stored.complianceScore, 90);
+    }
+
+    // --- Score Boundary Tests ---
+
+    function test_ScoreZero() public {
+        ComplianceOracle.ComplianceReport memory report = _makeReport(
+            bytes4("USDC"),
+            9500,
+            false,
+            false,
+            false,
+            block.timestamp,
+            0
+        );
+
+        vm.prank(reporter);
+        oracle.updateReport(report);
+
+        assertEq(oracle.getLatestReport().complianceScore, 0);
+    }
+
+    function test_ScoreMax() public {
+        ComplianceOracle.ComplianceReport memory report = _makeReport(
+            bytes4("USDC"),
+            10500,
+            true,
+            true,
+            true,
+            block.timestamp,
+            100
+        );
+
+        vm.prank(reporter);
+        oracle.updateReport(report);
+
+        assertEq(oracle.getLatestReport().complianceScore, 100);
+    }
+
+    function test_ScoreAtRiskBoundary() public {
+        // Score of 50 = AT_RISK threshold
+        ComplianceOracle.ComplianceReport memory report = _makeReport(
+            bytes4("USDC"),
+            10200,
+            true,
+            true,
+            false,
+            block.timestamp,
+            50
+        );
+
+        vm.prank(reporter);
+        oracle.updateReport(report);
+
+        assertEq(oracle.getLatestReport().complianceScore, 50);
     }
 
     // --- Edge Cases ---
@@ -348,15 +422,14 @@ contract ComplianceOracleTest is Test {
             false,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            0
         );
 
         vm.prank(reporter);
         oracle.updateReport(report);
 
-        ComplianceOracle.ComplianceReport memory stored = oracle
-            .getLatestReport();
-        assertEq(stored.ratioBps, 0);
+        assertEq(oracle.getLatestReport().ratioBps, 0);
     }
 
     function test_MaxRatio() public {
@@ -366,14 +439,13 @@ contract ComplianceOracleTest is Test {
             true,
             true,
             true,
-            block.timestamp
+            block.timestamp,
+            100
         );
 
         vm.prank(reporter);
         oracle.updateReport(report);
 
-        ComplianceOracle.ComplianceReport memory stored = oracle
-            .getLatestReport();
-        assertEq(stored.ratioBps, type(uint16).max);
+        assertEq(oracle.getLatestReport().ratioBps, type(uint16).max);
     }
 }
