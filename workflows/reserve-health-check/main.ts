@@ -86,7 +86,7 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
   writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdcReport);
   writeReportOnChain(runtime, sepoliaEvm, config.oracleAddress, usdtReport);
 
-  const summary = `USDC: ${usdcReport.status} (${usdcReport.ratioBps}bps) | USDT: ${usdtReport.status} (${usdtReport.ratioBps}bps)`;
+  const summary = `USDC: ${usdcReport.status} (${usdcReport.ratioBps}bps, score=${usdcReport.complianceScore}) | USDT: ${usdtReport.status} (${usdtReport.ratioBps}bps, score=${usdtReport.complianceScore})`;
   runtime.log(`=== Result: ${summary} ===`);
   return summary;
 };
@@ -105,6 +105,7 @@ interface ComplianceResult {
   ratioBps: number;
   status: string;
   compliant: boolean;
+  complianceScore: number;
   encodedReport: `0x${string}`;
 }
 
@@ -207,6 +208,13 @@ function computeComplianceReport(
   if (!data.noRehypothecation) runtime.log(`  WARNING: ${symbol}: Possible rehypothecation detected`);
   if (auditOverdue) runtime.log(`  WARNING: ${symbol}: Audit overdue (>30 days)`);
 
+  // Compute GENIUS Act Compliance Score (0-100)
+  const complianceScore = computeComplianceScore(
+    ratioBps, data.permittedAssetsOnly, data.noRehypothecation, data.lastAuditTimestamp, timestamp
+  );
+  const grade = complianceScore >= 80 ? "COMPLIANT" : complianceScore >= 50 ? "AT_RISK" : "NON_COMPLIANT";
+  runtime.log(`[Score] ${symbol}: ${complianceScore}/100 (${grade})`);
+
   // Encode for on-chain submission
   // Symbol as bytes4: "USDC" → 0x55534443, "USDT" → 0x55534454
   const symbolBytes = stringToBytes4Hex(symbol);
@@ -227,6 +235,7 @@ function computeComplianceReport(
           { type: 'bool', name: 'permittedAssetsOnly' },
           { type: 'bool', name: 'noRehypothecation' },
           { type: 'uint256', name: 'lastAuditTimestamp' },
+          { type: 'uint8', name: 'complianceScore' },
         ],
       },
     ] as const,
@@ -242,11 +251,12 @@ function computeComplianceReport(
         permittedAssetsOnly: data.permittedAssetsOnly,
         noRehypothecation: data.noRehypothecation,
         lastAuditTimestamp: data.lastAuditTimestamp,
+        complianceScore,
       },
     ]
   );
 
-  return { ratioBps, status, compliant, encodedReport };
+  return { ratioBps, status, compliant, complianceScore, encodedReport };
 }
 
 /**
@@ -287,6 +297,41 @@ function writeReportOnChain(
   } catch (e) {
     runtime.log(`[EVM Write] Unavailable (simulation): ${e}`);
   }
+}
+
+/**
+ * Computes a GENIUS Act Compliance Score (0-100) from weighted sub-scores.
+ * - Reserve Ratio:      40 pts (linear: 95%=0, 105%=40)
+ * - Permitted Assets:   20 pts (binary)
+ * - No Rehypothecation: 20 pts (binary)
+ * - Audit Freshness:    20 pts (linear: 0 days=20, 30+ days=0)
+ */
+function computeComplianceScore(
+  ratioBps: number,
+  permittedAssets: boolean,
+  noRehypo: boolean,
+  lastAuditTs: bigint,
+  nowTs: bigint,
+): number {
+  // 1. Ratio sub-score (0-40): linear from 9500bps (0) to 10500bps (40)
+  const ratioScore = Math.min(40, Math.max(0, Math.floor((ratioBps - 9500) / 25)));
+
+  // 2. Permitted assets (0 or 20)
+  const assetScore = permittedAssets ? 20 : 0;
+
+  // 3. No rehypothecation (0 or 20)
+  const rehypoScore = noRehypo ? 20 : 0;
+
+  // 4. Audit freshness (0-20): full marks at 0 days, degrades to 0 at 30+ days
+  let auditScore = 20;
+  if (lastAuditTs > 0n) {
+    const daysSince = Number((nowTs - lastAuditTs) / 86400n);
+    auditScore = Math.max(0, 20 - Math.floor(daysSince * 20 / 30));
+  }
+  // If lastAuditTs is 0, assume "not tracked" → give full marks (no penalty)
+
+  const total = Math.min(100, Math.max(0, ratioScore + assetScore + rehypoScore + auditScore));
+  return total;
 }
 
 // --- Workflow Setup ---
