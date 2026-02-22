@@ -28,6 +28,11 @@ contract AlertController is Ownable {
         string rule,
         string detail
     );
+    event ComplianceGradeChanged(
+        bytes4 indexed stablecoin,
+        uint8 score,
+        string grade
+    );
 
     constructor(address initialOwner, address _oracle) Ownable(initialOwner) {
         oracle = ComplianceOracle(_oracle);
@@ -82,6 +87,16 @@ contract AlertController is Ownable {
                 "AUDIT_OVERDUE",
                 "No issuer attestation in over 30 days (GENIUS Act Section 8)"
             );
+        }
+
+        // 4. Compliance Score Grade
+        uint8 score = report.complianceScore;
+        if (score >= 80) {
+            emit ComplianceGradeChanged(symbol, score, "COMPLIANT");
+        } else if (score >= 50) {
+            emit ComplianceGradeChanged(symbol, score, "AT_RISK");
+        } else {
+            emit ComplianceGradeChanged(symbol, score, "NON_COMPLIANT");
         }
     }
 
