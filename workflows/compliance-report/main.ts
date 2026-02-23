@@ -4,7 +4,9 @@ import {
   HTTPClient,
   handler,
   Runner,
+  ok,
   type Runtime,
+  type HTTPSendRequester,
   consensusIdenticalAggregation,
   type EVMLog,
   bytesToHex,
@@ -18,6 +20,12 @@ type Config = GeminiConfig & {
   oracleAddress: string;
   webhookUrl: string;
 };
+
+// --- Pinata Response ---
+interface PinataResult {
+  ipfsCid: string;
+  ipfsUrl: string;
+}
 
 // --- Log Trigger Handler ---
 
@@ -100,14 +108,55 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
   const proofHash = keccak256(toBytes(attestationText));
   runtime.log(`[Step 4] Proof Hash (keccak256): ${proofHash}`);
 
-  // --- Step 5: Send attestation + proof hash via webhook ---
+  // --- Step 5: Upload attestation to IPFS via Pinata ---
 
-  runtime.log("[Step 5] Sending attestation report to webhook...");
+  let ipfsCid = "";
+  let ipfsUrl = "";
+
+  runtime.log("[Step 5] Uploading attestation to IPFS via Pinata...");
+
+  let pinataJwt = "";
+  try {
+    const secret = runtime.getSecret({ id: "PINATA_JWT" }).result();
+    pinataJwt = secret.value;
+  } catch {
+    runtime.log("[Step 5] PINATA_JWT secret not available. Skipping IPFS upload.");
+  }
+
+  if (pinataJwt) {
+    try {
+      const txHashHex = bytesToHex(log.txHash);
+
+      const pinResult = httpClient
+        .sendRequest(
+          runtime,
+          buildPinataRequest(
+            pinataJwt, symbolStr, reportDate, String(timestamp),
+            complianceScore, grade, compliant, ratioBps, proofHash,
+            attestationText, txHashHex
+          ),
+          consensusIdenticalAggregation<PinataResult>()
+        )(runtime.config)
+        .result();
+
+      ipfsCid = pinResult.ipfsCid;
+      ipfsUrl = pinResult.ipfsUrl;
+      runtime.log(`[Step 5] ✅ Uploaded to IPFS!`);
+      runtime.log(`[Step 5] CID: ${ipfsCid}`);
+      runtime.log(`[Step 5] URL: ${ipfsUrl}`);
+    } catch (e) {
+      runtime.log(`[Step 5] IPFS upload error: ${String(e)}`);
+    }
+  }
+
+  // --- Step 6: Send attestation + proof hash + IPFS link via webhook ---
+
+  runtime.log("[Step 6] Sending attestation report to webhook...");
   try {
     const sendReport = httpClient.sendRequest(
       runtime,
       (sender) => {
-        const payload = JSON.stringify({
+        const webhookPayload = JSON.stringify({
           type: "COMPLIANCE_ATTESTATION",
           stablecoin: symbolStr,
           timestamp: String(timestamp),
@@ -117,36 +166,101 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
           compliant: compliant,
           ratioBps: ratioBps,
           proofHash: proofHash,
+          ipfsCid: ipfsCid,
+          ipfsUrl: ipfsUrl,
           attestationText: attestationText,
           txHash: bytesToHex(log.txHash),
           source: "StableGuard AI Compliance Engine",
           generatedBy: "Gemini AI via Chainlink CRE",
         });
 
+        const bodyBytes = new TextEncoder().encode(webhookPayload);
+        const body = uint8ArrayToBase64(bodyBytes);
+
         const resp = sender.sendRequest({
           url: config.webhookUrl,
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: new TextEncoder().encode(payload),
+          body,
         });
         return resp.result();
       },
       consensusIdenticalAggregation()
     );
     sendReport();
-    runtime.log(`[Step 5] Attestation report sent to webhook for ${symbolStr}.`);
+    runtime.log(`[Step 6] Attestation report sent to webhook for ${symbolStr}.`);
   } catch {
-    runtime.log("[Step 5] Webhook unavailable (simulation mode).");
+    runtime.log("[Step 6] Webhook unavailable (simulation mode).");
   }
+
+  // --- Final Summary ---
 
   runtime.log("====================================================");
   runtime.log(`RESULT: ${symbolStr} attestation generated`);
   runtime.log(`  Score: ${complianceScore}/100 (${grade})`);
   runtime.log(`  Proof Hash: ${proofHash}`);
+  if (ipfsUrl) {
+    runtime.log(`  IPFS URL: ${ipfsUrl}`);
+  }
   runtime.log("====================================================");
 
-  return `attestation_generated:${symbolStr}:${proofHash}`;
+  return `attestation_generated:${symbolStr}:${proofHash}:${ipfsCid}`;
 };
+
+// --- Pinata Request Builder (matches gemini.ts pattern) ---
+
+const buildPinataRequest =
+  (
+    jwt: string, symbolStr: string, reportDate: string, timestamp: string,
+    complianceScore: number, grade: string, compliant: boolean,
+    ratioBps: number, proofHash: string, attestationText: string, txHash: string
+  ) =>
+  (sendRequester: HTTPSendRequester, _config: Config): PinataResult => {
+    const pinataPayload = JSON.stringify({
+      pinataContent: {
+        stablecoin: symbolStr,
+        reportDate: reportDate,
+        timestamp: timestamp,
+        complianceScore: complianceScore,
+        grade: grade,
+        compliant: compliant,
+        ratioBps: ratioBps,
+        proofHash: proofHash,
+        attestationText: attestationText,
+        txHash: txHash,
+        source: "StableGuard AI Compliance Engine",
+        generatedBy: "Gemini AI via Chainlink CRE",
+      },
+      pinataMetadata: {
+        name: `StableGuard_${symbolStr}_${reportDate}_Attestation`,
+      },
+    });
+
+    const bodyBytes = new TextEncoder().encode(pinataPayload);
+    const body = uint8ArrayToBase64(bodyBytes);
+
+    const resp = sendRequester.sendRequest({
+      url: "https://api.pinata.cloud/pinning/pinJSONToIPFS",
+      method: "POST" as const,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body,
+    }).result();
+
+    const respBody = new TextDecoder().decode(resp.body);
+
+    if (!ok(resp)) {
+      throw new Error(`Pinata API error: ${resp.statusCode} - ${respBody}`);
+    }
+
+    const pinData = JSON.parse(respBody) as { IpfsHash: string };
+    return {
+      ipfsCid: pinData.IpfsHash,
+      ipfsUrl: `https://gateway.pinata.cloud/ipfs/${pinData.IpfsHash}`,
+    };
+  };
 
 // --- Workflow Setup ---
 
@@ -180,7 +294,7 @@ export async function main() {
   await runner.run(initWorkflow);
 }
 
-// --- Utility ---
+// --- Utilities ---
 
 /** Decode a bytes4 hex string like "0x55534443" to "USDC" */
 function bytes4HexToString(hex: string): string {
@@ -192,4 +306,20 @@ function bytes4HexToString(hex: string): string {
     str += String.fromCharCode(code);
   }
   return str;
+}
+
+/** WASM-safe base64 encoder (same as gemini.ts) */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let result = "";
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b0 = bytes[i];
+    const b1 = i + 1 < bytes.length ? bytes[i + 1] : 0;
+    const b2 = i + 2 < bytes.length ? bytes[i + 2] : 0;
+    result += chars[b0 >> 2];
+    result += chars[((b0 & 3) << 4) | (b1 >> 4)];
+    result += i + 1 < bytes.length ? chars[((b1 & 15) << 2) | (b2 >> 6)] : "=";
+    result += i + 2 < bytes.length ? chars[b2 & 63] : "=";
+  }
+  return result;
 }
