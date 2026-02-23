@@ -141,7 +141,7 @@ const onLogTrigger = (runtime: Runtime<Config>, log: EVMLog): string => {
 
       ipfsCid = pinResult.ipfsCid;
       ipfsUrl = pinResult.ipfsUrl;
-      runtime.log(`[Step 5] ✅ Uploaded to IPFS!`);
+      runtime.log(`[Step 5] Uploaded to IPFS successfully!`);
       runtime.log(`[Step 5] CID: ${ipfsCid}`);
       runtime.log(`[Step 5] URL: ${ipfsUrl}`);
     } catch (e) {
