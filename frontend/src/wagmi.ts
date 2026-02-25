@@ -1,9 +1,9 @@
-import { getDefaultConfig } from '@rainbow-me/rainbowkit';
-import { sepolia, mainnet } from 'wagmi/chains';
+import { getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { sepolia } from "wagmi/chains";
 
 export const config = getDefaultConfig({
-  appName: 'StableGuard Dashboard',
-  projectId: 'YOUR_PROJECT_ID',
-  chains: [mainnet, sepolia],
-  ssr: true, // If your dApp uses server side rendering (SSR)
+  appName: "StableGuard Dashboard",
+  projectId: "b1f5c3d2e4a6f8b0c9d1e3f5a7b9c0d2", // WalletConnect fallback
+  chains: [sepolia],
+  ssr: true,
 });
