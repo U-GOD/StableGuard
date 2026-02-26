@@ -40,11 +40,21 @@ const onCronTrigger = (runtime: Runtime<Config>): string => {
     // Helper 'text()' decodes the Uint8Array body
     regText = text(fetchRegText());
   } catch {
-    regText = "No new regulatory updates available.";
-    runtime.log("Regulatory API unavailable (simulation), using fallback.");
+    regText = "";
+    runtime.log("[HTTP] Congress.gov API unavailable in simulation mode");
   }
 
-  runtime.log(`Fetched regulatory text (${regText.length} chars).`);
+  // Use GENIUS Act excerpt as fallback for simulation
+  if (regText.length < 50) {
+    runtime.log("[HTTP] Using GENIUS Act reference text for analysis");
+    regText = `GENIUS Act (S.394) - Guiding and Establishing National Innovation for US Stablecoins.
+Section 4 - Reserve Requirements: Payment stablecoin issuers shall maintain reserves equal to or greater than 100% of the outstanding stablecoins in circulation. Reserves shall be held in US dollars, demand deposits at insured depository institutions, Treasury bills with maturity of 93 days or less, repurchase agreements backed by Treasury bills, or other high-quality liquid assets as approved by the primary Federal payment stablecoin regulator.
+Section 5 - Permitted Assets and Prohibitions: Reserves backing payment stablecoins shall not be rehypothecated, pledged, or otherwise used for any purpose other than maintaining the required reserve ratio. Issuers are prohibited from using reserves as collateral for loans or leveraged positions.
+Section 8 - Transparency and Reporting: Issuers of payment stablecoins shall publish monthly attestation reports from a registered public accounting firm. Reports must detail total reserves, total supply, and the composition of reserve assets. Reports must be made publicly available within 30 days of the reporting period.
+Section 9 - Enforcement: Federal regulators may take enforcement action including cease-and-desist orders, civil money penalties, and revocation of registration for non-compliance.`;
+  }
+
+  runtime.log(`[HTTP] Regulatory text loaded (${regText.length} chars)`);
 
   // 2. Ask Gemini (using our new module)
   let analysisResult: string;
